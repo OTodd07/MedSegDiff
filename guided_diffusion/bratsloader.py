@@ -278,14 +278,11 @@ class BRATSDataset3D(torch.utils.data.Dataset):
                 files.sort()
                 datapoint = dict()
                 # extract all files as channels
-                id = os.path.join(root.split('/')[3], (root.split('/'))[4], (root.split('/'))[4])
+                #id = os.path.join(root.split('/')[3], (root.split('/'))[4], (root.split('/'))[4])
+                id = os.path.join(root.split('/')[1], (root.split('/'))[2], (root.split('/'))[2])
                 for f in files:
-                    
-                    print(id)
-                    print(f)
                     if ('mask' in f):
                         continue
-                    print(f)
                     seqtype = f.split('_')[4].split('.')[0]
                     datapoint[seqtype] = os.path.join(root, f)
                 
@@ -295,21 +292,20 @@ class BRATSDataset3D(torch.utils.data.Dataset):
                     self.database.append(datapoint)
         
     def __len__(self):
-        print(len(self.database))
-        return len(self.database) * 155
+        return len(self.database) * 49
 
     def __getitem__(self, x):
         out = []
-        n = x // 155
-        slice = x % 155
+        n = x // 49
+        slice = x % 49
         filedict = self.database[n]
         for seqtype in self.seqtypes:
-            # print(filedict[seqtype])
-            # print(7/0)
+
             sitk_img = sitk.ReadImage(filedict[seqtype])
             #nib_img = nibabel.load(filedict[seqtype])
             path=filedict[seqtype]
-            o = torch.tensor(sitk.GetArrayFromImage(sitk_img)[slice,:,:])
+            arr = sitk.GetArrayFromImage(sitk_img)
+            o = torch.tensor(arr[slice,:,:])
             #o = torch.tensor(nib_img.get_fdata())[:,:,slice]
             # if seqtype != 'seg':
             #     o = o / o.max()
@@ -322,12 +318,14 @@ class BRATSDataset3D(torch.utils.data.Dataset):
                 image = self.transform(image)
             return (image, image, path.split('.nii')[0] + "_slice" + str(slice)+ ".nii") # virtual path
         else:
-
+           
             image = out[:-1, ...]
             label = out[-1, ...][None, ...]
+           
             # image = image[..., 8:-8, 8:-8]      #crop to a size of (224, 224)
             # label = label[..., 8:-8, 8:-8]
             label=torch.where(label > 0, 1, 0).float()  #merge all tumor classes into one
+           
             if self.transform:
                 state = torch.get_rng_state()
                 image = self.transform(image)

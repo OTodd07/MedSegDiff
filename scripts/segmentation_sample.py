@@ -41,6 +41,11 @@ def visualize(img):
     return normalized_img
 
 
+def image_to_rgb(image):
+    norm_image = (image - image.min()) / (image.max() - image.min())
+    rgb_image = np.stack((norm_image,) * 3, axis=-1)
+    return rgb_image
+
 def main():
     args = create_argparser().parse_args()
     dist_util.setup_dist(args)
@@ -91,6 +96,7 @@ def main():
     model.eval()
     for _ in range(len(data)):
         b, m, path = next(data)  #should return an image from the dataloader "data"
+   
         c = th.randn_like(b[:, :1, ...])
         img = th.cat((b, c), dim=1)     #add a noise channel$
         if args.data_name == 'ISIC':
@@ -122,14 +128,24 @@ def main():
             end.record()
             th.cuda.synchronize()
             print('time for 1 sample', start.elapsed_time(end))  #time measurement for the generation of 1 sample
-
             co = th.tensor(cal_out)
+            print(sample.shape)
+            print(th.min(sample))
+            print(th.max(sample))
+            s_vis = sample.squeeze(0).squeeze(0)
+            print(s_vis.shape)
+            print(th.min(s_vis))
+            print(th.max(s_vis))
+            
+            #Image.fromarray((visualize(s_vis.detach().cpu().numpy()) * 255).astype(np.uint8)).save(os.path.join("test_no_mask", str(slice_ID)+'_sample'+str(i)+".jpg"))
             if args.version == 'new':
-                enslist.append(sample[:,-1,:,:])
+                # print(7/0)
+                enslist.append(visualize(sample[:,-1,:,:]))
             else:
                 enslist.append(co)
 
-            if args.debug:
+            if args.debug or True:
+                #print(10/0)
                 # print('sample size is',sample.size())
                 # print('org size is',org.size())
                 # print('cal size is',cal.size())
@@ -150,6 +166,7 @@ def main():
 
                     tup = (ss,o,c)
                 elif args.data_name == 'BRATS':
+                    print('here')
                     s = th.tensor(sample)[:,-1,:,:].unsqueeze(1)
                     m = th.tensor(m.to(device = 'cuda:0'))[:,0,:,:].unsqueeze(1)
                     o1 = th.tensor(org)[:,0,:,:].unsqueeze(1)
@@ -162,6 +179,7 @@ def main():
 
                 compose = th.cat(tup,0)
                 vutils.save_image(compose, fp = os.path.join(args.out_dir, str(slice_ID)+'_output'+str(i)+".jpg"), nrow = 1, padding = 10)
+                Image.fromarray((visualize(s_vis.detach().cpu().numpy()) * 255).astype(np.uint8)).save(os.path.join("80000-sample", str(slice_ID)+'_sample'+str(i)+".jpg"))
         ensres = staple(th.stack(enslist,dim=0)).squeeze(0)
         vutils.save_image(ensres, fp = os.path.join(args.out_dir, str(slice_ID)+'_output_ens'+".jpg"), nrow = 1, padding = 10)
 

@@ -270,6 +270,7 @@ class GaussianDiffusion:
         cal = 0
         assert t.shape == (B,)
         model_output = model(x, self._scale_timesteps(t), **model_kwargs)
+    
         if isinstance(model_output, tuple):
             model_output, cal = model_output
         x=x[:,-1:,...]  #loss is only calculated on the last channel, not on the input brain MR image
@@ -451,6 +452,7 @@ class GaussianDiffusion:
         nonzero_mask = (
             (t != 0).float().view(-1, *([1] * (len(x.shape) - 1)))
         )
+    
         sample = out["mean"] + nonzero_mask * th.exp(0.5 * out["log_variance"]) * noise
 
         return {"sample": sample, "pred_xstart": out["pred_xstart"], "cal": out["cal"]}
@@ -988,8 +990,8 @@ class GaussianDiffusion:
         if noise is None:
             noise = th.randn_like(x_start[:, -1:, ...])
 
-
         mask = x_start[:, -1:, ...]
+   
         res = torch.where(mask > 0, 1, 0)   #merge all tumor classes into one to get a binary segmentation mask
 
         res_t = self.q_sample(res, t, noise=noise)     #add noise to the segmentation channel
@@ -1034,6 +1036,7 @@ class GaussianDiffusion:
 
             # model_output = (cal > 0.5) * (model_output >0.5) * model_output if 2. * (cal*model_output).sum() / (cal+model_output).sum() < 0.75 else model_output
             # terms["loss_diff"] = nn.BCELoss(model_output, target)
+     
             terms["loss_diff"] = mean_flat((target - model_output) ** 2 )
             terms["loss_cal"] = mean_flat((res - cal) ** 2)
             # terms["loss_cal"] = nn.BCELoss()(cal.type(th.float), res.type(th.float)) 

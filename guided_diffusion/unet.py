@@ -1062,6 +1062,7 @@ class UNetModel_newpreview(nn.Module):
         :param y: an [N] Tensor of labels, if class-conditional.
         :return: an [N x C x ...] Tensor of outputs.
         """
+
         assert (y is not None) == (
             self.num_classes is not None
         ), "must specify y if and only if the model is class-conditional"
@@ -1091,6 +1092,7 @@ class UNetModel_newpreview(nn.Module):
             h = module(h, emb)
         h = h.type(x.dtype)
         out = self.out(h)
+
         return out, cal
 
 
