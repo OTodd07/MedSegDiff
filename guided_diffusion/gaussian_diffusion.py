@@ -266,15 +266,20 @@ class GaussianDiffusion:
         if model_kwargs is None:
             model_kwargs = {}
         B, C = x.shape[:2]
-        C=1
+        #C=1
+        C=4
         cal = 0
         assert t.shape == (B,)
         model_output = model(x, self._scale_timesteps(t), **model_kwargs)
+        
     
         if isinstance(model_output, tuple):
             model_output, cal = model_output
-        x=x[:,-1:,...]  #loss is only calculated on the last channel, not on the input brain MR image
+           
+        #x=x[:,-1:,...]  #loss is only calculated on the last channel, not on the input brain MR image
+        x=x[:,-4:,...]
         if self.model_var_type in [ModelVarType.LEARNED, ModelVarType.LEARNED_RANGE]:
+            print(model_output.shape)
             assert model_output.shape == (B, C * 2, *x.shape[2:])
             model_output, model_var_values = th.split(model_output, C, dim=1)
             if self.model_var_type == ModelVarType.LEARNED:
@@ -321,6 +326,10 @@ class GaussianDiffusion:
             if self.model_mean_type == ModelMeanType.START_X:
                 pred_xstart = process_xstart(model_output)
             else:
+                # print("########################")
+                # print(x.shape)
+                # print(model_output.shape)
+                # print(5/0)
                 pred_xstart = process_xstart(
                     self._predict_xstart_from_eps(x_t=x, t=t, eps=model_output)
                 )
@@ -344,6 +353,8 @@ class GaussianDiffusion:
 
 
     def _predict_xstart_from_eps(self, x_t, t, eps):
+        print(x_t.shape)
+        print(eps.shape)
         assert x_t.shape == eps.shape
         return (
             _extract_into_tensor(self.sqrt_recip_alphas_cumprod, t, x_t.shape) * x_t
@@ -448,7 +459,9 @@ class GaussianDiffusion:
             denoised_fn=denoised_fn,
             model_kwargs=model_kwargs,
         )
-        noise = th.randn_like(x[:, -1:,...])
+    
+        #noise = th.randn_like(x[:, -1:,...])
+        noise = th.randn_like(x[:, -4:,...])
         nonzero_mask = (
             (t != 0).float().view(-1, *([1] * (len(x.shape) - 1)))
         )
@@ -525,8 +538,10 @@ class GaussianDiffusion:
             device = next(model.parameters()).device
         assert isinstance(shape, (tuple, list))
         img = img.to(device)
-        noise = th.randn_like(img[:, :1, ...]).to(device)
-        x_noisy = torch.cat((img[:, :-1,  ...], noise), dim=1)  #add noise as the last channel
+        #noise = th.randn_like(img[:, :1, ...]).to(device)
+        noise = th.randn_like(img[:, :4, ...]).to(device)
+        #x_noisy = torch.cat((img[:, :-1,  ...], noise), dim=1)  #add noise as the last channel
+        x_noisy = torch.cat((img[:, :-4,  ...], noise), dim=1) 
         img=img.to(device)
 
         if self.dpm_solver:
@@ -627,7 +642,8 @@ class GaussianDiffusion:
             img = th.randn(*shape, device=device)
         indices = list(range(time))[::-1]
         org_c = img.size(1)
-        org_MRI = img[:, :-1, ...]      #original brain MR image
+        #org_MRI = img[:, :-1, ...]      #original brain MR image
+        org_MRI = img[:, :-4, ...]      #original brain MR image
         if progress:
             # Lazy import so that we don't depend on tqdm.
             from tqdm.auto import tqdm
@@ -697,7 +713,8 @@ class GaussianDiffusion:
                 * th.sqrt(1 - alpha_bar / alpha_bar_prev)
         )
         # Equation 12.
-        noise = th.randn_like(x[:, -1:, ...])
+        #noise = th.randn_like(x[:, -1:, ...])
+        noise = th.randn_like(x[:, -4:, ...])
 
         mean_pred = (
                 out["pred_xstart"] * th.sqrt(alpha_bar_prev)
@@ -859,9 +876,11 @@ class GaussianDiffusion:
         img = img.to(device)
 
         t = th.randint(499,500, (b,), device=device).long().to(device)
-        noise = th.randn_like(img[:, :1, ...]).to(device)
+        #noise = th.randn_like(img[:, :1, ...]).to(device)
+        noise = th.randn_like(img[:, :4, ...]).to(device)
 
-        x_noisy = torch.cat((img[:, :-1, ...], noise), dim=1).float()
+        #x_noisy = torch.cat((img[:, :-1, ...], noise), dim=1).float()
+        x_noisy = torch.cat((img[:, :-4, ...], noise), dim=1).float()
         img = img.to(device)
 
         final = None
@@ -910,7 +929,8 @@ class GaussianDiffusion:
         else:
             img = th.randn(*shape, device=device)
         indices = list(range(time-1))[::-1]
-        orghigh = img[:, :-1, ...]
+        #orghigh = img[:, :-1, ...]
+        orghigh = img[:, :-4, ...]
 
 
         if progress:
@@ -988,15 +1008,19 @@ class GaussianDiffusion:
         if model_kwargs is None:
             model_kwargs = {}
         if noise is None:
-            noise = th.randn_like(x_start[:, -1:, ...])
+            #noise = th.randn_like(x_start[:, -1:, ...])
+            noise = th.randn_like(x_start[:, -4:, ...])
 
-        mask = x_start[:, -1:, ...]
+        #mask = x_start[:, -1:, ...]
+        mask = x_start[:, -4:, ...]
    
-        res = torch.where(mask > 0, 1, 0)   #merge all tumor classes into one to get a binary segmentation mask
+        #res = torch.where(mask > 0, 1, 0)   #merge all tumor classes into one to get a binary segmentation mask
+        res = mask
 
         res_t = self.q_sample(res, t, noise=noise)     #add noise to the segmentation channel
         x_t=x_start.float()
-        x_t[:, -1:, ...]=res_t.float()
+        #x_t[:, -1:, ...]=res_t.float()
+        x_t[:, -4:, ...]=res_t.float()
         terms = {}
 
 
@@ -1008,7 +1032,8 @@ class GaussianDiffusion:
                 ModelVarType.LEARNED_RANGE,
             ]:
                 B, C = x_t.shape[:2]
-                C=1
+                #C=1
+                C=4
                 assert model_output.shape == (B, C * 2, *x_t.shape[2:])
                 model_output, model_var_values = th.split(model_output, C, dim=1)
                 # Learn the variance using the variational bound, but don't let
