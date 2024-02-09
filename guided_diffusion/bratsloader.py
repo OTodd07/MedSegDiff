@@ -332,6 +332,110 @@ class BRATSDataset3D(torch.utils.data.Dataset):
                 torch.set_rng_state(state)
                 label = self.transform(label)
             return (image, label, path.split('.nii')[0] + "_slice" + str(slice)+ ".nii") # virtual path
+        
+
+
+
+class BRATSDataset3DMulti(torch.utils.data.Dataset):
+    def __init__(self, directory, transform, test_flag=False):
+        '''
+        directory is expected to contain some folder structure:
+                  if some subfolder contains only files, all of these
+                  files are assumed to have a name like
+                  brats_train_001_XXX_123_w.nii.gz
+                  where XXX is one of t1, t1ce, t2, flair, seg
+                  we assume these five files belong to the same image
+                  seg is supposed to contain the segmentation
+        '''
+        super().__init__()
+        self.directory = os.path.expanduser(directory)
+        self.transform = transform
+
+        self.test_flag=test_flag
+        if test_flag:
+            self.seqtypes = ['t1', 't1ce', 't2', 'flair']
+        else:
+            self.seqtypes = ['t1', 't1ce', 't2', 'flair', 'seg']
+
+        self.seqtypes_set = set(self.seqtypes)
+        self.database = []
+        for root, dirs, files in os.walk(self.directory):
+            # if there are no subdirs, we have data
+            if not dirs:
+                print(root)
+                files.sort()
+                datapoint = dict()
+                # extract all files as channels
+                #id = os.path.join(root.split('/')[3], (root.split('/'))[4], (root.split('/'))[4])
+                id = os.path.join(root.split('/')[1], (root.split('/'))[2], (root.split('/'))[2])
+                for f in files:
+                    if ('mask' in f):
+                        continue
+                    seqtype = f.split('_')[4].split('.')[0]
+                    datapoint[seqtype] = os.path.join(root, f)
+                
+                if id in train_ids:
+                    assert set(datapoint.keys()) == self.seqtypes_set, \
+                        f'datapoint is incomplete, keys are {datapoint.keys()}'
+                    self.database.append(datapoint)
+        
+    def __len__(self):
+        return len(self.database) * 49
+
+    def __getitem__(self, x):
+        out = []
+        n = x // 49
+        slice = x % 49
+        filedict = self.database[n]
+        for seqtype in self.seqtypes:
+
+            sitk_img = sitk.ReadImage(filedict[seqtype])
+            #nib_img = nibabel.load(filedict[seqtype])
+            path=filedict[seqtype]
+            arr = sitk.GetArrayFromImage(sitk_img)
+            o = torch.tensor(arr[slice,:,:])
+            #o = torch.tensor(nib_img.get_fdata())[:,:,slice]
+            # if seqtype != 'seg':
+            #     o = o / o.max()
+            out.append(o)
+        out = torch.stack(out)
+        if self.test_flag:
+            image=out
+            # image = image[..., 8:-8, 8:-8]     #crop to a size of (224, 224)
+            if self.transform:
+                image = self.transform(image)
+            return (image, image, path.split('.nii')[0] + "_slice" + str(slice)+ ".nii") # virtual path
+        else:
+           
+            image = out[:-1, ...]
+            label = out[-1, ...][None, ...]
+            label = label.numpy()
+            multi_label = np.zeros((4,240,240))
+            # image = image[..., 8:-8, 8:-8]      #crop to a size of (224, 224)
+            # label = label[..., 8:-8, 8:-8]
+            print(label.shape)
+            for i in range(4):
+                np.putmask(multi_label[i,:,:], label == i, 1)
+
+            # print(path)
+            # print(np.unique(multi_label))
+            # print(len(np.unique(multi_label)))
+            # print(multi_label.shape)
+            # print(label[0,90,90])
+            
+            # if label[0,90,90] > 0:
+            #     print(multi_label[:,90,90])
+            #     print(10/0)
+            #label=torch.where(label > 0, 1, 0).float()  #merge all tumor classes into one
+            label = torch.Tensor(multi_label)
+            if self.transform:
+                state = torch.get_rng_state()
+                image = self.transform(image)
+                torch.set_rng_state(state)
+                label = self.transform(label)
+            return (image, label, path.split('.nii')[0] + "_slice" + str(slice)+ ".nii") # virtual path
+        
+
 
 
 

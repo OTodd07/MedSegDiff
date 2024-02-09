@@ -5,7 +5,7 @@ sys.path.append("../")
 sys.path.append("./")
 from guided_diffusion import dist_util, logger
 from guided_diffusion.resample import create_named_schedule_sampler
-from guided_diffusion.bratsloader import BRATSDataset, BRATSDataset3D
+from guided_diffusion.bratsloader import BRATSDataset, BRATSDataset3D, BRATSDataset3DMulti
 from guided_diffusion.isicloader import ISICDataset
 from guided_diffusion.custom_dataset_loader import CustomDataset
 from guided_diffusion.script_util import (
@@ -38,8 +38,9 @@ def main():
         tran_list = [transforms.Resize((args.image_size,args.image_size)),]
         transform_train = transforms.Compose(tran_list)
 
-        ds = BRATSDataset3D(args.data_dir, transform_train, test_flag=False)
-        args.in_ch = 5
+        #ds = BRATSDataset3D(args.data_dir, transform_train, test_flag=False)
+        ds = BRATSDataset3DMulti(args.data_dir, transform_train, test_flag=False)
+        args.in_ch = 8
     else :
         tran_list = [transforms.Resize((args.image_size,args.image_size)), transforms.ToTensor(),]
         transform_train = transforms.Compose(tran_list)

@@ -49,7 +49,7 @@ def model_and_diffusion_defaults():
         num_channels=128,
         num_res_blocks=2,
         num_heads=4,
-        in_ch = 5,
+        in_ch=8,
         num_heads_upsample=-1,
         num_head_channels=-1,
         attention_resolutions="16,8",
@@ -102,6 +102,7 @@ def create_model_and_diffusion(
     dpm_solver,
     version,
 ):
+
     model = create_model(
         image_size,
         num_channels,
@@ -174,11 +175,14 @@ def create_model(
     for res in attention_resolutions.split(","):
         attention_ds.append(image_size // int(res))
 
+
+
     return UNetModel_newpreview(
         image_size=image_size,
         in_channels=in_ch,
         model_channels=num_channels,
-        out_channels=2,#(3 if not learn_sigma else 6),
+        out_channels=8,
+        #out_channels=2,#(3 if not learn_sigma else 6),
         num_res_blocks=num_res_blocks,
         attention_resolutions=tuple(attention_ds),
         dropout=dropout,
