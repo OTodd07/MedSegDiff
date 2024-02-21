@@ -204,6 +204,7 @@ class TrainLoop:
 
     def run_step(self, batch, cond):
   
+    
         batch=th.cat((batch, cond), dim=1)
   
         cond={}

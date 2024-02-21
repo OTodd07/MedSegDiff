@@ -15,9 +15,10 @@ import torch as th
 from PIL import Image
 import torch.distributed as dist
 from guided_diffusion import dist_util, logger
-from guided_diffusion.bratsloader import BRATSDataset, BRATSDataset3D
+from guided_diffusion.bratsloader import BRATSDataset, BRATSDataset3D, BRATSDataset3DMulti
 from guided_diffusion.isicloader import ISICDataset
 import torchvision.utils as vutils
+import torchvision
 from guided_diffusion.utils import staple
 from guided_diffusion.script_util import (
     NUM_CLASSES,
@@ -27,6 +28,7 @@ from guided_diffusion.script_util import (
     args_to_dict,
 )
 import torchvision.transforms as transforms
+#import torchvision.transforms.InterpolationMode as IM
 from torchsummary import summary
 seed=10
 th.manual_seed(seed)
@@ -58,11 +60,11 @@ def main():
         ds = ISICDataset(args, args.data_dir, transform_test, mode = 'Test')
         args.in_ch = 4
     elif args.data_name == 'BRATS':
-        tran_list = [transforms.Resize((args.image_size,args.image_size)),]
+        tran_list = [transforms.Resize((args.image_size,args.image_size), interpolation=torchvision.transforms.InterpolationMode.NEAREST),]
         transform_test = transforms.Compose(tran_list)
 
-        ds = BRATSDataset3D(args.data_dir,transform_test)
-        args.in_ch = 5
+        ds = BRATSDataset3DMulti(args.data_dir,transform_test)
+        args.in_ch = 7
     datal = th.utils.data.DataLoader(
         ds,
         batch_size=args.batch_size,
@@ -96,9 +98,21 @@ def main():
     model.eval()
     for _ in range(len(data)):
         b, m, path = next(data)  #should return an image from the dataloader "data"
+
+        if th.max(th.argmax(m, dim=1)) == 0:
+            print("skipping")
+            continue
+        else:
+            print("not skipping")
    
-        c = th.randn_like(b[:, :1, ...])
+        #c = th.randn_like(b[:, :1, ...])
+        #c = th.randn_like(b[:, :4, ...])
+        c = th.randn_like(b[:, :3, ...])
+     
         img = th.cat((b, c), dim=1)     #add a noise channel$
+
+    
+   
         if args.data_name == 'ISIC':
             slice_ID=path[0].split("_")[-1].split('.')[0]
         elif args.data_name == 'BRATS':
@@ -117,6 +131,7 @@ def main():
             sample_fn = (
                 diffusion.p_sample_loop_known if not args.use_ddim else diffusion.ddim_sample_loop_known
             )
+      
             sample, x_noisy, org, cal, cal_out = sample_fn(
                 model,
                 (args.batch_size, 3, args.image_size, args.image_size), img,
@@ -128,14 +143,36 @@ def main():
             end.record()
             th.cuda.synchronize()
             print('time for 1 sample', start.elapsed_time(end))  #time measurement for the generation of 1 sample
+        
+            arg_max_sample = (th.argmax(sample, dim=1) + 1).cpu().numpy()
+            val_max_sample = th.max(sample,dim=1)[0].cpu().numpy()
+            np.putmask(arg_max_sample, val_max_sample < 0.5, 0)
+            sample = th.Tensor(arg_max_sample).to(device = 'cuda:0')
+            sample[sample > 0] = 1
+
+            arg_max_mask = (th.argmax(m, dim=1) + 1).cpu().numpy()
+            val_max_mask = th.max(m,dim=1)[0].cpu().numpy()
+            np.putmask(arg_max_mask, val_max_mask == 0, 0)
+            m = th.Tensor(arg_max_mask)
+            m[m > 0] = 1
+
+            arg_max_cal = (th.argmax(cal, dim=1) + 1).cpu().numpy()
+            val_max_cal = th.max(cal,dim=1)[0].cpu().numpy()
+            np.putmask(arg_max_cal, val_max_cal < 0.5, 0)
+            cal = th.Tensor(arg_max_cal).to(device = 'cuda:0')
+            cal[cal > 0] 
+            
+            sample = sample.unsqueeze(1)
+            
+            m = m.unsqueeze(1)
+            cal = cal.unsqueeze(1)
             co = th.tensor(cal_out)
-            print(sample.shape)
-            print(th.min(sample))
-            print(th.max(sample))
+         
             s_vis = sample.squeeze(0).squeeze(0)
-            print(s_vis.shape)
-            print(th.min(s_vis))
-            print(th.max(s_vis))
+            # print(s_vis.shape)
+            # print(th.min(s_vis))
+            # print(th.max(s_vis))
+            
             
             #Image.fromarray((visualize(s_vis.detach().cpu().numpy()) * 255).astype(np.uint8)).save(os.path.join("test_no_mask", str(slice_ID)+'_sample'+str(i)+".jpg"))
             if args.version == 'new':
@@ -173,13 +210,14 @@ def main():
                     o2 = th.tensor(org)[:,1,:,:].unsqueeze(1)
                     o3 = th.tensor(org)[:,2,:,:].unsqueeze(1)
                     o4 = th.tensor(org)[:,3,:,:].unsqueeze(1)
-                    c = th.tensor(cal)
+                    c = th.tensor(cal)[:,0,:,:].unsqueeze(1)
 
-                    tup = (o1/o1.max(),o2/o2.max(),o3/o3.max(),o4/o4.max(),m,s,c,co)
+                    #tup = (o1/o1.max(),o2/o2.max(),o3/o3.max(),o4/o4.max(),m,s,c,co)
+                    tup = (o1/o1.max(),o2/o2.max(),o3/o3.max(),o4/o4.max(),m,s,c)
 
                 compose = th.cat(tup,0)
                 vutils.save_image(compose, fp = os.path.join(args.out_dir, str(slice_ID)+'_output'+str(i)+".jpg"), nrow = 1, padding = 10)
-                Image.fromarray((visualize(s_vis.detach().cpu().numpy()) * 255).astype(np.uint8)).save(os.path.join("80000-sample", str(slice_ID)+'_sample'+str(i)+".jpg"))
+                Image.fromarray((visualize(s_vis.detach().cpu().numpy()) * 255).astype(np.uint8)).save(os.path.join("20-02-36000", str(slice_ID)+'_sample'+str(i)+".jpg"))
         ensres = staple(th.stack(enslist,dim=0)).squeeze(0)
         vutils.save_image(ensres, fp = os.path.join(args.out_dir, str(slice_ID)+'_output_ens'+".jpg"), nrow = 1, padding = 10)
 

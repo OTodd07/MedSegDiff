@@ -40,7 +40,7 @@ def main():
 
         #ds = BRATSDataset3D(args.data_dir, transform_train, test_flag=False)
         ds = BRATSDataset3DMulti(args.data_dir, transform_train, test_flag=False)
-        args.in_ch = 8
+        args.in_ch = 7
     else :
         tran_list = [transforms.Resize((args.image_size,args.image_size)), transforms.ToTensor(),]
         transform_train = transforms.Compose(tran_list)

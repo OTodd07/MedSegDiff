@@ -26,6 +26,8 @@ from .dpm_solver import NoiseScheduleVP, model_wrapper, DPM_Solver
 import string
 import random
 
+NUM_CHANS = 3
+
 def standardize(img):
     mean = th.mean(img)
     std = th.std(img)
@@ -242,7 +244,7 @@ class GaussianDiffusion:
 
 
     def p_mean_variance(
-        self, model, x, t, clip_denoised=True, denoised_fn=None, model_kwargs=None
+        self, model, x, t, clip_denoised=True, n=None, denoised_fn=None, model_kwargs=None
     ):
         """
         Apply the model to get p(x_{t-1} | x_t), as well as a prediction of
@@ -267,7 +269,7 @@ class GaussianDiffusion:
             model_kwargs = {}
         B, C = x.shape[:2]
         #C=1
-        C=4
+        C=NUM_CHANS
         cal = 0
         assert t.shape == (B,)
         model_output = model(x, self._scale_timesteps(t), **model_kwargs)
@@ -277,9 +279,8 @@ class GaussianDiffusion:
             model_output, cal = model_output
            
         #x=x[:,-1:,...]  #loss is only calculated on the last channel, not on the input brain MR image
-        x=x[:,-4:,...]
+        x=x[:,-NUM_CHANS:,...]
         if self.model_var_type in [ModelVarType.LEARNED, ModelVarType.LEARNED_RANGE]:
-            print(model_output.shape)
             assert model_output.shape == (B, C * 2, *x.shape[2:])
             model_output, model_var_values = th.split(model_output, C, dim=1)
             if self.model_var_type == ModelVarType.LEARNED:
@@ -326,13 +327,11 @@ class GaussianDiffusion:
             if self.model_mean_type == ModelMeanType.START_X:
                 pred_xstart = process_xstart(model_output)
             else:
-                # print("########################")
-                # print(x.shape)
-                # print(model_output.shape)
-                # print(5/0)
                 pred_xstart = process_xstart(
                     self._predict_xstart_from_eps(x_t=x, t=t, eps=model_output)
+                    #self._predict_xstart_from_eps(x_t=x, t=t, eps=n)
                 )
+   
             model_mean, _, _ = self.q_posterior_mean_variance(
                 x_start=pred_xstart, x_t=x, t=t
             )
@@ -353,8 +352,6 @@ class GaussianDiffusion:
 
 
     def _predict_xstart_from_eps(self, x_t, t, eps):
-        print(x_t.shape)
-        print(eps.shape)
         assert x_t.shape == eps.shape
         return (
             _extract_into_tensor(self.sqrt_recip_alphas_cumprod, t, x_t.shape) * x_t
@@ -461,7 +458,7 @@ class GaussianDiffusion:
         )
     
         #noise = th.randn_like(x[:, -1:,...])
-        noise = th.randn_like(x[:, -4:,...])
+        noise = th.randn_like(x[:, -NUM_CHANS:,...])
         nonzero_mask = (
             (t != 0).float().view(-1, *([1] * (len(x.shape) - 1)))
         )
@@ -539,9 +536,14 @@ class GaussianDiffusion:
         assert isinstance(shape, (tuple, list))
         img = img.to(device)
         #noise = th.randn_like(img[:, :1, ...]).to(device)
-        noise = th.randn_like(img[:, :4, ...]).to(device)
+        noise = th.randn_like(img[:, :NUM_CHANS, ...]).to(device)
+     
+        
         #x_noisy = torch.cat((img[:, :-1,  ...], noise), dim=1)  #add noise as the last channel
-        x_noisy = torch.cat((img[:, :-4,  ...], noise), dim=1) 
+        x_noisy = torch.cat((img[:, :-NUM_CHANS,  ...], noise), dim=1)
+       
+        
+
         img=img.to(device)
 
         if self.dpm_solver:
@@ -642,8 +644,9 @@ class GaussianDiffusion:
             img = th.randn(*shape, device=device)
         indices = list(range(time))[::-1]
         org_c = img.size(1)
+
         #org_MRI = img[:, :-1, ...]      #original brain MR image
-        org_MRI = img[:, :-4, ...]      #original brain MR image
+        org_MRI = img[:, :-NUM_CHANS, ...]      #original brain MR image
         if progress:
             # Lazy import so that we don't depend on tqdm.
             from tqdm.auto import tqdm
@@ -714,7 +717,7 @@ class GaussianDiffusion:
         )
         # Equation 12.
         #noise = th.randn_like(x[:, -1:, ...])
-        noise = th.randn_like(x[:, -4:, ...])
+        noise = th.randn_like(x[:, -NUM_CHANS:, ...])
 
         mean_pred = (
                 out["pred_xstart"] * th.sqrt(alpha_bar_prev)
@@ -880,7 +883,7 @@ class GaussianDiffusion:
         noise = th.randn_like(img[:, :4, ...]).to(device)
 
         #x_noisy = torch.cat((img[:, :-1, ...], noise), dim=1).float()
-        x_noisy = torch.cat((img[:, :-4, ...], noise), dim=1).float()
+        x_noisy = torch.cat((img[:, :-NUM_CHANS, ...], noise), dim=1).float()
         img = img.to(device)
 
         final = None
@@ -930,7 +933,7 @@ class GaussianDiffusion:
             img = th.randn(*shape, device=device)
         indices = list(range(time-1))[::-1]
         #orghigh = img[:, :-1, ...]
-        orghigh = img[:, :-4, ...]
+        orghigh = img[:, :-NUM_CHANS, ...]
 
 
         if progress:
@@ -959,7 +962,7 @@ class GaussianDiffusion:
                 img = out["sample"]
 
     def _vb_terms_bpd(
-        self, model, x_start, x_t, t, clip_denoised=True, model_kwargs=None
+        self, model, x_start, x_t, t, clip_denoised=True, n=None, model_kwargs=None
     ):
         """
         Get a term for the variational lower-bound.
@@ -973,7 +976,7 @@ class GaussianDiffusion:
             x_start=x_start, x_t=x_t, t=t
         )
         out = self.p_mean_variance(
-            model, x_t, t, clip_denoised=clip_denoised, model_kwargs=model_kwargs
+            model, x_t, t, clip_denoised=clip_denoised, n=n, model_kwargs=model_kwargs
         )
         kl = normal_kl(
             true_mean, true_log_variance_clipped, out["mean"], out["log_variance"]
@@ -1009,10 +1012,10 @@ class GaussianDiffusion:
             model_kwargs = {}
         if noise is None:
             #noise = th.randn_like(x_start[:, -1:, ...])
-            noise = th.randn_like(x_start[:, -4:, ...])
+            noise = th.randn_like(x_start[:, -NUM_CHANS:, ...])
 
         #mask = x_start[:, -1:, ...]
-        mask = x_start[:, -4:, ...]
+        mask = x_start[:, -NUM_CHANS:, ...]
    
         #res = torch.where(mask > 0, 1, 0)   #merge all tumor classes into one to get a binary segmentation mask
         res = mask
@@ -1020,32 +1023,38 @@ class GaussianDiffusion:
         res_t = self.q_sample(res, t, noise=noise)     #add noise to the segmentation channel
         x_t=x_start.float()
         #x_t[:, -1:, ...]=res_t.float()
-        x_t[:, -4:, ...]=res_t.float()
+        x_t[:, -NUM_CHANS:, ...]=res_t.float()
         terms = {}
 
 
         if self.loss_type == LossType.MSE or self.loss_type == LossType.BCE_DICE or self.loss_type == LossType.RESCALED_MSE:
 
+
+         
             model_output, cal = model(x_t, self._scale_timesteps(t), **model_kwargs)
+            
             if self.model_var_type in [
                 ModelVarType.LEARNED,
                 ModelVarType.LEARNED_RANGE,
             ]:
                 B, C = x_t.shape[:2]
                 #C=1
-                C=4
+                C=NUM_CHANS
                 assert model_output.shape == (B, C * 2, *x_t.shape[2:])
                 model_output, model_var_values = th.split(model_output, C, dim=1)
                 # Learn the variance using the variational bound, but don't let
                 # it affect our mean prediction.
                 frozen_out = th.cat([model_output.detach(), model_var_values], dim=1)
-                terms["vb"] = self._vb_terms_bpd(
+                vb_terms_bpd = self._vb_terms_bpd(
                     model=lambda *args, r=frozen_out: r,
                     x_start=res,
                     x_t=res_t,
                     t=t,
                     clip_denoised=False,
-                )["output"]
+                    n = noise
+                )
+                terms["vb"] = vb_terms_bpd["output"]
+                start_pred = vb_terms_bpd["pred_xstart"]
                 if self.loss_type == LossType.RESCALED_MSE:
                     # Divide by 1000 for equivalence with initial implementation.
                     # Without a factor of 1/1000, the VB term hurts the MSE term.
@@ -1061,7 +1070,8 @@ class GaussianDiffusion:
 
             # model_output = (cal > 0.5) * (model_output >0.5) * model_output if 2. * (cal*model_output).sum() / (cal+model_output).sum() < 0.75 else model_output
             # terms["loss_diff"] = nn.BCELoss(model_output, target)
-     
+            print(f"Start_pred MSE: {mean_flat((mask - start_pred) ** 2).sum() / B}")
+            print(f"Diff MSE: {mean_flat((noise - model_output) ** 2).sum() / B}")
             terms["loss_diff"] = mean_flat((target - model_output) ** 2 )
             terms["loss_cal"] = mean_flat((res - cal) ** 2)
             # terms["loss_cal"] = nn.BCELoss()(cal.type(th.float), res.type(th.float)) 

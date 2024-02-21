@@ -27,6 +27,8 @@ from .nn import (
     layer_norm,
 )
 
+NUM_CHANS = 3
+
 
 class AttentionPool2d(nn.Module):
     """
@@ -300,7 +302,8 @@ class ResBlock(TimestepBlock):
 
     def _forward(self, x, emb):
         if self.updown:
-            in_rest, in_conv = self.in_layers[:-1], self.in_layers[-1]
+            #in_rest, in_conv = self.in_layers[:-1], self.in_layers[-1]
+            in_rest, in_conv = self.in_layers[:-NUM_CHANS], self.in_layers[-NUM_CHANS]
             h = in_rest(x)
             h = self.h_upd(h)
             x = self.x_upd(x)
@@ -537,6 +540,9 @@ class UNetModel_v1preview(nn.Module):
         use_new_attention_order=False,
         high_way = True,
     ):
+        
+        print(in_channels)
+        print(7/0)
         super().__init__()
 
         if num_heads_upsample == -1:
@@ -767,7 +773,8 @@ class UNetModel_v1preview(nn.Module):
             emb = emb + self.label_emb(y)
 
         h = x.type(self.dtype)
-        c = h[:,:-1,...]
+        #c = h[:,:-1,...]
+        c = h[:,:-NUM_CHANS,...]
         hlist= []
         for ind, module in enumerate(self.input_blocks):
             if len(emb.size()) > 2:
@@ -837,6 +844,9 @@ class UNetModel_newpreview(nn.Module):
         use_new_attention_order=False,
         high_way = True,
     ):
+        # print(in_channels)
+        # print(out_channels)
+        # print(7/0)
         super().__init__()
 
         if num_heads_upsample == -1:
@@ -1018,7 +1028,8 @@ class UNetModel_newpreview(nn.Module):
 
         if high_way:
             features = 32
-            self.hwm = Generic_UNet(self.in_channels - 1, features, 1, 5, anchor_out=True, upscale_logits=True)
+            #self.hwm = Generic_UNet(self.in_channels - 1, features, 1, 5, anchor_out=True, upscale_logits=True)
+            self.hwm = Generic_UNet(self.in_channels - NUM_CHANS, features, NUM_CHANS, 5, anchor_out=True, upscale_logits=True)
 
     def convert_to_fp16(self):
         """
@@ -1065,10 +1076,12 @@ class UNetModel_newpreview(nn.Module):
         :param y: an [N] Tensor of labels, if class-conditional.
         :return: an [N x C x ...] Tensor of outputs.
         """
-
+     
+  
         assert (y is not None) == (
             self.num_classes is not None
         ), "must specify y if and only if the model is class-conditional"
+
 
         hs = []
         emb = self.time_embed(timestep_embedding(timesteps, self.model_channels))
@@ -1078,8 +1091,10 @@ class UNetModel_newpreview(nn.Module):
             emb = emb + self.label_emb(y)
 
         h = x.type(self.dtype)
-        c = h[:,:-1,...]
+        #c = h[:,:-1,...]
+        c = h[:,:-NUM_CHANS,...]
         anch, cal = self.highway_forward(c)
+
         for ind, module in enumerate(self.input_blocks):
             if len(emb.size()) > 2:
                 emb = emb.squeeze()
@@ -2111,6 +2126,9 @@ class ConvDropoutNormNonlin(nn.Module):
         self.conv_op = conv_op
         self.norm_op = norm_op
 
+        # print(input_channels)
+        # print(output_channels)
+        # print(9/0)
         self.conv = self.conv_op(input_channels, output_channels, **self.conv_kwargs)
         if self.dropout_op is not None and self.dropout_op_kwargs['p'] is not None and self.dropout_op_kwargs[
             'p'] > 0:
@@ -2129,6 +2147,7 @@ class ConvDropoutNormNonlin(nn.Module):
 
 class ConvDropoutNonlinNorm(ConvDropoutNormNonlin):
     def forward(self, x):
+        print(x.shape)
         x = self.conv(x)
         if self.dropout is not None:
             x = self.dropout(x)
@@ -2496,10 +2515,13 @@ class Generic_UNet(SegmentationNetwork):
         if not seg_outputs:
             seg_outputs.append(self.final_nonlin(self.seg_outputs[0](x)))
 
+
+        
         if self._deep_supervision and self.do_ds:
             return tuple([seg_outputs[-1]] + [i(j) for i, j in
                                               zip(list(self.upscale_logits_ops)[::-1], seg_outputs[:-1][::-1])])
         if self.anchor_out:
+ 
             return tuple([i(j) for i, j in
                                         zip(list(self.upscale_logits_ops)[::-1], anch_outputs[:-1][::-1])]),seg_outputs[-1]
                                             

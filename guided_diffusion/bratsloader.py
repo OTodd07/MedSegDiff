@@ -6,6 +6,8 @@ import os.path
 import nibabel
 import SimpleITK as sitk
 import torchvision.utils as vutils
+import torchvision
+import torchvision.transforms as transforms
 
 train_ids = ['HGG/Brats18_2013_27_1/Brats18_2013_27_1',
             'HGG/Brats18_TCIA01_448_1/Brats18_TCIA01_448_1',
@@ -410,29 +412,22 @@ class BRATSDataset3DMulti(torch.utils.data.Dataset):
             image = out[:-1, ...]
             label = out[-1, ...][None, ...]
             label = label.numpy()
-            multi_label = np.zeros((4,240,240))
+            multi_label = np.zeros((3,240,240))
             # image = image[..., 8:-8, 8:-8]      #crop to a size of (224, 224)
             # label = label[..., 8:-8, 8:-8]
-            print(label.shape)
-            for i in range(4):
-                np.putmask(multi_label[i,:,:], label == i, 1)
+            # print(label.shape)
+            for i in range(1,4):
+                np.putmask(multi_label[i-1,:,:], label == i, i > 0)
 
-            # print(path)
-            # print(np.unique(multi_label))
-            # print(len(np.unique(multi_label)))
-            # print(multi_label.shape)
-            # print(label[0,90,90])
-            
-            # if label[0,90,90] > 0:
-            #     print(multi_label[:,90,90])
-            #     print(10/0)
-            #label=torch.where(label > 0, 1, 0).float()  #merge all tumor classes into one
+            # label=torch.where(label > 0, 1, 0).float()  #merge all tumor classes into one
             label = torch.Tensor(multi_label)
             if self.transform:
                 state = torch.get_rng_state()
-                image = self.transform(image)
+                #image = self.transform(image)
+                image = transforms.Resize((256,256))(image)
                 torch.set_rng_state(state)
-                label = self.transform(label)
+                label = transforms.Resize((256,256),interpolation=torchvision.transforms.InterpolationMode.NEAREST)(label)
+   
             return (image, label, path.split('.nii')[0] + "_slice" + str(slice)+ ".nii") # virtual path
         
 
