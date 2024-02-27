@@ -183,7 +183,7 @@ def create_model(
         image_size=image_size,
         in_channels=in_ch,
         model_channels=num_channels,
-        out_channels=NUM_CHANS * 3,
+        out_channels=NUM_CHANS * 2,
         #out_channels=2,#(3 if not learn_sigma else 6),
         num_res_blocks=num_res_blocks,
         attention_resolutions=tuple(attention_ds),

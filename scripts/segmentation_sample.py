@@ -2,6 +2,7 @@
 
 import argparse
 import os
+import matplotlib.pyplot as plt
 from ssl import OP_NO_TLSv1
 import nibabel as nib
 # from visdom import Visdom
@@ -125,6 +126,31 @@ def main():
         end = th.cuda.Event(enable_timing=True)
         enslist = []
 
+        arg_max_mask = (th.argmax(m, dim=1) + 1).cpu().numpy()
+        val_max_mask = th.max(m,dim=1)[0].cpu().numpy()
+        np.putmask(arg_max_mask, val_max_mask == 0, 0)
+        m = th.Tensor(arg_max_mask)
+        m[m > 0] = 1
+        m = m.unsqueeze(1)
+
+        #print(np.unique(arg_max_mask))
+        if len(np.unique(arg_max_mask)) < 4:
+            print("not enough")
+            continue
+        else:
+            print("enough")
+        # print(7/0)
+
+        rgb_mask = np.zeros((3,256,256), dtype=np.uint8)
+        for i in range(1,4):
+            np.putmask(rgb_mask[i-1,:,:], arg_max_mask == i, 255)
+
+        plt.imshow(rgb_mask.transpose(1,2,0))
+        plt.axis('off')
+        plt.savefig(f"rgb_samples/{str(slice_ID)}_mask.png", bbox_inches="tight", pad_inches=0)
+
+        
+
         for i in range(args.num_ensemble):  #this is for the generation of an ensemble of 5 masks.
             model_kwargs = {}
             start.record()
@@ -150,11 +176,15 @@ def main():
             sample = th.Tensor(arg_max_sample).to(device = 'cuda:0')
             sample[sample > 0] = 1
 
-            arg_max_mask = (th.argmax(m, dim=1) + 1).cpu().numpy()
-            val_max_mask = th.max(m,dim=1)[0].cpu().numpy()
-            np.putmask(arg_max_mask, val_max_mask == 0, 0)
-            m = th.Tensor(arg_max_mask)
-            m[m > 0] = 1
+            rgb_sample = np.zeros((3,256,256), dtype=np.uint8)
+            for j in range(1,4):
+                np.putmask(rgb_sample[j-1,:,:], arg_max_sample == j, 255)
+
+            plt.imshow(rgb_sample.transpose(1,2,0))
+            plt.axis('off')
+            plt.savefig(f"rgb_samples/{str(slice_ID)}_output_sample_{str(i)}.png", bbox_inches="tight", pad_inches=0)
+
+
 
             arg_max_cal = (th.argmax(cal, dim=1) + 1).cpu().numpy()
             val_max_cal = th.max(cal,dim=1)[0].cpu().numpy()
@@ -164,7 +194,7 @@ def main():
             
             sample = sample.unsqueeze(1)
             
-            m = m.unsqueeze(1)
+           
             cal = cal.unsqueeze(1)
             co = th.tensor(cal_out)
          
@@ -213,11 +243,15 @@ def main():
                     c = th.tensor(cal)[:,0,:,:].unsqueeze(1)
 
                     #tup = (o1/o1.max(),o2/o2.max(),o3/o3.max(),o4/o4.max(),m,s,c,co)
-                    tup = (o1/o1.max(),o2/o2.max(),o3/o3.max(),o4/o4.max(),m,s,c)
+                    tup = (o1/o1.max(),o2/o2.max(),o3/o3.max(),o4/o4.max(),m,s)
 
+
+                print(o1.shape)
+                print(m.shape)
+                print(s.shape)
                 compose = th.cat(tup,0)
                 vutils.save_image(compose, fp = os.path.join(args.out_dir, str(slice_ID)+'_output'+str(i)+".jpg"), nrow = 1, padding = 10)
-                Image.fromarray((visualize(s_vis.detach().cpu().numpy()) * 255).astype(np.uint8)).save(os.path.join("20-02-36000", str(slice_ID)+'_sample'+str(i)+".jpg"))
+                Image.fromarray((visualize(s_vis.detach().cpu().numpy()) * 255).astype(np.uint8)).save(os.path.join("21-02-70000", str(slice_ID)+'_sample'+str(i)+".jpg"))
         ensres = staple(th.stack(enslist,dim=0)).squeeze(0)
         vutils.save_image(ensres, fp = os.path.join(args.out_dir, str(slice_ID)+'_output_ens'+".jpg"), nrow = 1, padding = 10)
 
